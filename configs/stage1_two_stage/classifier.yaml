@@ -1,0 +1,5 @@
+model: resnet18
+data: data/processed/classifier_patches
+epochs: 50
+batch: 16
+imgsz: 224

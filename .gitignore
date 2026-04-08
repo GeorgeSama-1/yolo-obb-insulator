@@ -1,0 +1,45 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Raw datasets and local experiments
+datasets/
+data/raw/labelme_obb/
+data/processed/*
+!data/processed/.gitkeep
+data/splits/*.json
+
+# Training outputs
+runs/
+*.pt
+*.onnx
+*.engine
+
+# Generated reports and visualizations
+reports/figures/*
+!reports/figures/.gitkeep
+reports/metrics/*.json
+reports/comparisons/*
+!reports/comparisons/.gitkeep
+
+# Temporary notebooks and logs
+*.ipynb_checkpoints
+*.log

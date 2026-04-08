@@ -1,0 +1,8 @@
+model: yolo11n-obb.pt
+data: data/processed/yolo_obb_insulator/dataset.yaml
+epochs: 100
+imgsz: 1024
+batch: 4
+project: runs/stage0_obb
+name: insulator
+device: cpu
