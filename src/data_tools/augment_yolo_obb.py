@@ -8,6 +8,8 @@ import shutil
 from PIL import Image, ImageEnhance, ImageOps
 import yaml
 
+from src.stage0_obb.visualize import visualize_yolo_obb_split
+
 
 Point = tuple[float, float]
 
@@ -191,6 +193,9 @@ def augment_yolo_obb_dataset(
     target_per_image: int,
     augment_splits: tuple[str, ...] = ("train",),
     seed: int = 42,
+    preview_output_dir: str | Path | None = None,
+    preview_splits: tuple[str, ...] = (),
+    preview_limit_per_split: int | None = None,
 ) -> None:
     input_root = Path(input_root)
     output_root = Path(output_root)
@@ -209,3 +214,18 @@ def augment_yolo_obb_dataset(
             )
         else:
             copy_unaugmented_split(input_root, output_root, split)
+
+    if preview_output_dir is not None:
+        dataset_yaml = output_root / "dataset.yaml"
+        data = yaml.safe_load(dataset_yaml.read_text(encoding="utf-8")) or {}
+        raw_names = data.get("names", {})
+        class_names = {int(key): value for key, value in raw_names.items()}
+        preview_root = Path(preview_output_dir)
+        for split in preview_splits:
+            visualize_yolo_obb_split(
+                dataset_root=output_root,
+                split=split,
+                output_dir=preview_root / split,
+                class_names=class_names,
+                limit=preview_limit_per_split,
+            )

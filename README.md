@@ -2,7 +2,7 @@
 
 这是一个面向绝缘子检测、计数和后续缺陷识别实验的项目骨架，当前已经优先打通了 `Stage 0`：
 
-- 将 `LabelMe OBB` 标注转换为 `YOLO OBB` 训练格式
+- 将平铺的 `YOLO OBB TXT + 图片` 整理成标准训练目录结构
 - 对训练集做离线增强
 - 检查增强后标签是否合法
 - 可视化抽检增强后的 OBB 框
@@ -33,7 +33,7 @@ yolo-obb/
 
 - `datasets/`
   - 当前原始数据目录
-  - 存放 `LabelMe json + 图片`
+  - 当前主流程默认存放平铺的 `JPG + TXT`
 - `data/raw/`
   - 规范化后的原始数据副本
 - `data/processed/`
@@ -71,11 +71,22 @@ pip install -r requirements.txt
 
 ### 3.1 原始数据
 
-当前原始数据是 `LabelMe OBB` 风格：
+当前推荐主流程的原始数据是平铺的 `YOLO OBB` 风格：
 
 - 图片文件：如 `23.JPG`
-- 标注文件：如 `23.json`
-- 每个目标是 `4` 个点的 `polygon`
+- 标注文件：如 `23.txt`
+- 每一行是 `class_id + 8个归一化点坐标`
+
+例如：
+
+```text
+0 0.758541 0.278335 0.782787 0.266505 0.794211 0.308130 0.769966 0.319960
+```
+
+兼容说明：
+
+- 如果你后面还有旧的 `LabelMe JSON` 数据，也可以继续用旧脚本转换
+- 但你当前这批新数据，应该直接走 `TXT OBB` 主流程
 
 ### 3.2 训练数据
 
@@ -106,24 +117,14 @@ python scripts/data/make_split.py \
 
 - `data/splits/debug_split.json`
 
-### 第二步：检查原始 LabelMe OBB 标注
+### 第二步：整理成标准 YOLO OBB 训练数据集
+
+你当前的 `datasets/` 已经是 `JPG + TXT`，但还是平铺结构，还不能直接拿来当标准训练目录。
+
+先执行：
 
 ```bash
-python scripts/data/validate_labelme_obb.py \
-  --source datasets \
-  --label insulator
-```
-
-如果正常，会输出：
-
-```bash
-Validation passed
-```
-
-### 第三步：转换成 YOLO OBB 数据集
-
-```bash
-python scripts/data/convert_to_yolo_obb.py \
+python scripts/data/prepare_yolo_obb_dataset.py \
   --source datasets \
   --split-json data/splits/debug_split.json \
   --output data/processed/yolo_obb_insulator
@@ -137,7 +138,7 @@ python scripts/data/convert_to_yolo_obb.py \
 - `data/processed/yolo_obb_insulator/labels/val`
 - `data/processed/yolo_obb_insulator/dataset.yaml`
 
-### 第四步：对训练集做离线增强
+### 第三步：对训练集做离线增强并顺手生成预览图
 
 比如每张训练图扩成 `20` 张：
 
@@ -147,7 +148,9 @@ python scripts/data/augment_yolo_obb.py \
   --output data/processed/yolo_obb_insulator_aug20 \
   --target-per-image 20 \
   --augment-splits train \
-  --seed 123
+  --seed 123 \
+  --preview \
+  --preview-limit 50
 ```
 
 说明：
@@ -158,6 +161,10 @@ python scripts/data/augment_yolo_obb.py \
 - `--augment-splits train`
   - 只增强训练集
   - 验证集不增强，原样复制
+- `--preview`
+  - 增强完成后顺手导出一批可视化预览图
+- `--preview-limit 50`
+  - 每个 split 最多导出 50 张预览图
 
 当前脚本会做：
 
@@ -168,7 +175,11 @@ python scripts/data/augment_yolo_obb.py \
 - 对比度扰动
 - 颜色扰动
 
-### 第五步：检查增强后标签是否合法
+预览图默认输出到：
+
+- `data/processed/yolo_obb_insulator_aug20/preview`
+
+### 第四步：检查增强后标签是否合法
 
 ```bash
 python scripts/data/validate_yolo_obb_dataset.py \
@@ -188,7 +199,15 @@ python scripts/data/validate_yolo_obb_dataset.py \
 YOLO OBB dataset validation passed
 ```
 
-### 第六步：可视化抽检增强后的 OBB 标签
+### 第五步：人工查看增强时自动生成的预览图
+
+你现在不一定需要再手动跑一次可视化脚本了，因为增强脚本已经支持直接输出预览图。
+
+默认去看这里：
+
+- `data/processed/yolo_obb_insulator_aug20/preview/train`
+
+如果你还是想手动额外导出，也可以继续用：
 
 ```bash
 python scripts/infer/visualize_yolo_obb_dataset.py \
@@ -347,11 +366,7 @@ python scripts/data/make_split.py \
   --source datasets \
   --output data/splits/debug_split.json
 
-python scripts/data/validate_labelme_obb.py \
-  --source datasets \
-  --label insulator
-
-python scripts/data/convert_to_yolo_obb.py \
+python scripts/data/prepare_yolo_obb_dataset.py \
   --source datasets \
   --split-json data/splits/debug_split.json \
   --output data/processed/yolo_obb_insulator
@@ -361,16 +376,12 @@ python scripts/data/augment_yolo_obb.py \
   --output data/processed/yolo_obb_insulator_aug20 \
   --target-per-image 20 \
   --augment-splits train \
-  --seed 123
+  --seed 123 \
+  --preview \
+  --preview-limit 50
 
 python scripts/data/validate_yolo_obb_dataset.py \
   --dataset data/processed/yolo_obb_insulator_aug20
-
-python scripts/infer/visualize_yolo_obb_dataset.py \
-  --dataset data/processed/yolo_obb_insulator_aug20 \
-  --split train \
-  --output reports/figures/aug_check \
-  --limit 50
 
 python scripts/train/train_stage0_obb.py \
   --config configs/stage0_obb/train_insulator.yaml

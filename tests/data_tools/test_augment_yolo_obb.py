@@ -68,3 +68,31 @@ def test_augment_yolo_obb_dataset_creates_output_root_and_dataset_yaml(tmp_path)
     assert (output_root / "dataset.yaml").exists()
     assert len(list((output_root / "images" / "train").glob("*.jpg"))) == 2
     assert len(list((output_root / "images" / "val").glob("*.jpg"))) == 1
+
+
+def test_augment_yolo_obb_dataset_can_write_preview_overlays(tmp_path):
+    input_root = tmp_path / "input"
+    (input_root / "images" / "train").mkdir(parents=True)
+    (input_root / "labels" / "train").mkdir(parents=True)
+    Image.new("RGB", (16, 16), color=(10, 20, 30)).save(input_root / "images" / "train" / "sample.jpg")
+    (input_root / "labels" / "train" / "sample.txt").write_text(
+        "0 0.100000 0.100000 0.400000 0.100000 0.400000 0.400000 0.100000 0.400000\n",
+        encoding="utf-8",
+    )
+    (input_root / "dataset.yaml").write_text(
+        "path: /tmp/input\ntrain: images/train\nval: images/val\nnames:\n  0: insulator\n",
+        encoding="utf-8",
+    )
+
+    output_root = tmp_path / "augmented"
+    augment_yolo_obb_dataset(
+        input_root=input_root,
+        output_root=output_root,
+        target_per_image=2,
+        seed=3,
+        preview_output_dir=output_root / "preview",
+        preview_splits=("train",),
+        preview_limit_per_split=1,
+    )
+
+    assert len(list((output_root / "preview" / "train").glob("*_overlay.jpg"))) == 1
