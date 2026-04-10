@@ -4,7 +4,7 @@ from PIL import Image
 import yaml
 
 from src.data_tools.ingest import find_yolo_obb_pairs
-from src.data_tools.prepare_yolo_obb import export_existing_yolo_obb_dataset
+from src.data_tools.prepare_yolo_obb import export_existing_yolo_obb_dataset, reorder_points_clockwise
 
 
 def test_export_existing_yolo_obb_dataset_writes_split_structure(tmp_path):
@@ -28,3 +28,21 @@ def test_export_existing_yolo_obb_dataset_writes_split_structure(tmp_path):
     assert (tmp_path / "output" / "labels" / "train" / "sample.txt").exists()
     data = yaml.safe_load(data_yaml.read_text(encoding="utf-8"))
     assert data["names"][0] == "insulator"
+
+
+def test_reorder_points_clockwise_starts_from_top_left():
+    points = [
+        (0.8, 0.8),
+        (0.2, 0.2),
+        (0.8, 0.2),
+        (0.2, 0.8),
+    ]
+
+    reordered = reorder_points_clockwise(points)
+
+    assert reordered == [
+        (0.2, 0.2),
+        (0.8, 0.2),
+        (0.8, 0.8),
+        (0.2, 0.8),
+    ]

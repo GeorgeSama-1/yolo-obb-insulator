@@ -290,7 +290,192 @@ python scripts/infer/visualize_stage0_predictions.py \
 - 有没有明显漏检
 - 有没有明显误检
 
-## 7. 计数评估脚本
+## 7. 将新数据自动转换为 CVAT XML
+
+如果你后面新增了一批图片，并且已经有对应的 `YOLO OBB` 标签，希望导入 CVAT 继续修标，可以直接使用：
+
+- [scripts/data/convert_yolo_obb_to_cvat_xml.py](/mnt/f/yolo-obb/scripts/data/convert_yolo_obb_to_cvat_xml.py)
+
+这个脚本输出的是：
+
+- `CVAT for images 1.1` XML
+- 图形类型为原生旋转框 `<box rotation="...">`
+- 不是 polygon
+
+### 7.1 支持的输入目录
+
+脚本支持 3 种常见输入形式：
+
+- 平铺目录：`xxx.jpg + xxx.txt`
+- 中间目录：`images/train + labels/train`
+- 标准数据集：`dataset.yaml + images/train + labels/train`
+
+### 7.2 从平铺目录直接转换
+
+如果你的目录是这种形式：
+
+```text
+some_dir/
+├─ a.jpg
+├─ a.txt
+├─ b.jpg
+└─ b.txt
+```
+
+执行：
+
+```bash
+python3 scripts/data/convert_yolo_obb_to_cvat_xml.py \
+  --source /path/to/some_dir \
+  --output /path/to/annotations.xml \
+  --class-name insulator
+```
+
+### 7.3 从 `images/train + labels/train` 目录转换
+
+如果你的目录是这种形式：
+
+```text
+some_dir/
+├─ images/
+│  └─ train/
+└─ labels/
+   └─ train/
+```
+
+执行：
+
+```bash
+python3 scripts/data/convert_yolo_obb_to_cvat_xml.py \
+  --source /path/to/some_dir \
+  --output /path/to/annotations.xml \
+  --class-name insulator \
+  --split train
+```
+
+例如你当前这批新图就可以直接这样转：
+
+```bash
+python3 scripts/data/convert_yolo_obb_to_cvat_xml.py \
+  --source /mnt/f/yolo-obb/new_images \
+  --output /mnt/f/yolo-obb/new_images_annotations.xml \
+  --class-name insulator \
+  --split train
+```
+
+### 7.4 从标准 YOLO OBB 数据集转换
+
+如果你的目录已经有 `dataset.yaml`，可以直接：
+
+```bash
+python3 scripts/data/convert_yolo_obb_to_cvat_xml.py \
+  --dataset data/processed/yolo_obb_insulator_aug20 \
+  --output /path/to/annotations.xml \
+  --split train
+```
+
+### 7.5 导入 CVAT 的建议
+
+推荐做法：
+
+1. 先在 CVAT 里创建任务并上传图片
+2. 再选择 `Import annotations`
+3. 格式选择 `CVAT for images 1.1`
+4. 上传脚本生成的 `.xml`
+
+注意：
+
+- 当前 XML 导出的是原生旋转框，不是 polygon
+- `rotation` 已经归一化到 `0~360`
+- 更适合你现在这条“模型预标注后，再进 CVAT 修标”的流程
+
+### 7.6 推荐的数据扩充闭环
+
+如果你当前最核心的目标是持续扩充数据集，而不是严格管理 `v1 / v2 / v3`，推荐维护一个总训练池：
+
+```text
+datasets_pool/
+├─ xxx.jpg
+├─ xxx.txt
+├─ yyy.jpg
+└─ yyy.txt
+```
+
+推荐工作流：
+
+1. 用当前模型对新图预标注
+2. 转成 CVAT XML 并导入 CVAT 修标
+3. 修标完成后，把这批新数据并入 `datasets_pool`
+4. 每次训练都直接基于 `datasets_pool` 重新切分、增强和训练
+
+### 7.7 将修好的新数据并入 `datasets_pool`
+
+脚本：
+
+- [scripts/data/merge_into_dataset_pool.py](/mnt/f/yolo-obb/scripts/data/merge_into_dataset_pool.py)
+
+如果修好的数据是平铺目录：
+
+```bash
+python3 scripts/data/merge_into_dataset_pool.py \
+  --source /path/to/corrected_batch \
+  --pool datasets_pool
+```
+
+如果修好的数据是这种形式：
+
+```text
+corrected_batch/
+├─ images/train/
+└─ labels/train/
+```
+
+则执行：
+
+```bash
+python3 scripts/data/merge_into_dataset_pool.py \
+  --source /path/to/corrected_batch \
+  --pool datasets_pool \
+  --split train
+```
+
+如果同名图片和标签已经存在，而你明确想覆盖旧结果，可以加：
+
+```bash
+--overwrite
+```
+
+### 7.8 从 `datasets_pool` 重新训练
+
+当你并入了一批新修好的数据后，下一轮训练建议统一从 `datasets_pool` 出发：
+
+```bash
+python scripts/data/make_split.py \
+  --source datasets_pool \
+  --output data/splits/pool_split.json
+
+python scripts/data/prepare_yolo_obb_dataset.py \
+  --source datasets_pool \
+  --split-json data/splits/pool_split.json \
+  --output data/processed/yolo_obb_insulator_pool
+
+python scripts/data/augment_yolo_obb.py \
+  --input data/processed/yolo_obb_insulator_pool \
+  --output data/processed/yolo_obb_insulator_pool_aug20 \
+  --target-per-image 20 \
+  --augment-splits train \
+  --seed 123 \
+  --preview \
+  --preview-limit 50
+
+python scripts/data/validate_yolo_obb_dataset.py \
+  --dataset data/processed/yolo_obb_insulator_pool_aug20
+
+python scripts/train/train_stage0_obb.py \
+  --config configs/stage0_obb/train_insulator.yaml
+```
+
+## 8. 计数评估脚本
 
 目前有一个简单的计数评估入口：
 
@@ -306,7 +491,7 @@ python scripts/eval/eval_stage0_obb.py \
 - `mae`
 - `exact_accuracy`
 
-## 8. 当前最推荐的训练前检查清单
+## 9. 当前最推荐的训练前检查清单
 
 在服务器上开始训练前，建议至少确认这 3 件事都做了：
 
@@ -314,7 +499,7 @@ python scripts/eval/eval_stage0_obb.py \
 2. `visualize_yolo_obb_dataset.py` 已人工抽检过一批增强图  
 3. `train_insulator.yaml` 中的 `data` 已指向增强后的数据集  
 
-## 9. 其他已预留能力
+## 10. 其他已预留能力
 
 ### Stage 1：两阶段路线
 
@@ -345,7 +530,7 @@ python scripts/eval/eval_stage0_obb.py \
 
 - 直接训练 `normal / abnormal` 的 OBB 模型
 
-## 10. 运行测试
+## 11. 运行测试
 
 如果你修改了脚本或数据处理逻辑，可以运行：
 
@@ -353,11 +538,7 @@ python scripts/eval/eval_stage0_obb.py \
 pytest -q
 ```
 
-当前本地验证结果是：
-
-- `22 passed`
-
-## 11. 一套最常用命令
+## 12. 一套最常用命令
 
 如果你只想快速照着执行，最常用的一套命令如下：
 

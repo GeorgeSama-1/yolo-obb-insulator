@@ -1,7 +1,32 @@
 from pathlib import Path
+import math
 import shutil
 
 import yaml
+
+
+def reorder_points_clockwise(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    if len(points) != 4:
+        raise ValueError("OBB points must contain exactly 4 vertices")
+
+    center_x = sum(x for x, _ in points) / len(points)
+    center_y = sum(y for _, y in points) / len(points)
+    ordered = sorted(points, key=lambda point: math.atan2(point[1] - center_y, point[0] - center_x))
+
+    start_index = min(range(len(ordered)), key=lambda idx: (ordered[idx][1], ordered[idx][0]))
+    return ordered[start_index:] + ordered[:start_index]
+
+
+def reorder_yolo_obb_line_clockwise(line: str) -> str:
+    parts = line.split()
+    if len(parts) < 9:
+        raise ValueError(f"Expected at least 9 values, got {len(parts)}: {line!r}")
+
+    class_id = parts[0]
+    coords = [float(value) for value in parts[1:9]]
+    points = [(coords[index], coords[index + 1]) for index in range(0, len(coords), 2)]
+    ordered = reorder_points_clockwise(points)
+    return " ".join([class_id, *[f"{value:.6f}" for point in ordered for value in point]])
 
 
 def export_existing_yolo_obb_dataset(
