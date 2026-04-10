@@ -6,6 +6,7 @@ from src.data_tools.augment_yolo_obb import (
     augment_dataset_split,
     augment_yolo_obb_dataset,
     apply_horizontal_flip_to_points,
+    parse_yolo_obb_line,
 )
 
 
@@ -96,3 +97,30 @@ def test_augment_yolo_obb_dataset_can_write_preview_overlays(tmp_path):
     )
 
     assert len(list((output_root / "preview" / "train").glob("*_overlay.jpg"))) == 1
+
+
+def test_augment_dataset_split_clamps_slightly_out_of_range_coordinates(tmp_path):
+    input_root = tmp_path / "input"
+    output_root = tmp_path / "output"
+    (input_root / "images" / "train").mkdir(parents=True)
+    (input_root / "labels" / "train").mkdir(parents=True)
+
+    Image.new("RGB", (32, 32), color=(120, 120, 120)).save(input_root / "images" / "train" / "sample.jpg")
+    (input_root / "labels" / "train" / "sample.txt").write_text(
+        "0 -0.000347 0.100000 0.400000 0.100000 1.000052 0.400000 0.100000 0.400000\n",
+        encoding="utf-8",
+    )
+
+    augment_dataset_split(
+        input_root=input_root,
+        output_root=output_root,
+        split="train",
+        target_per_image=2,
+        seed=7,
+    )
+
+    for label_path in sorted((output_root / "labels" / "train").glob("*.txt")):
+        annotation = parse_yolo_obb_line(label_path.read_text(encoding="utf-8").strip())
+        for x, y in annotation.points:
+            assert 0.0 <= x <= 1.0
+            assert 0.0 <= y <= 1.0

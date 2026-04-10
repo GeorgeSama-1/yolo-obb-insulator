@@ -35,6 +35,14 @@ def format_yolo_obb_line(annotation: YoloObbAnnotation) -> str:
     return " ".join([str(annotation.class_id), *flattened])
 
 
+def _clamp_coord(value: float) -> float:
+    return max(0.0, min(1.0, value))
+
+
+def _clamp_points(points: list[Point]) -> list[Point]:
+    return [(_clamp_coord(x), _clamp_coord(y)) for x, y in points]
+
+
 def apply_horizontal_flip_to_points(points: list[Point]) -> list[Point]:
     return [(1.0 - x, y) for x, y in points]
 
@@ -81,7 +89,10 @@ def _transform_annotations(
         "rot270": apply_rotate_270_to_points,
     }[transform_name]
     return [
-        YoloObbAnnotation(class_id=annotation.class_id, points=point_transform(annotation.points))
+        YoloObbAnnotation(
+            class_id=annotation.class_id,
+            points=_clamp_points(point_transform(annotation.points)),
+        )
         for annotation in annotations
     ]
 
@@ -152,7 +163,13 @@ def augment_dataset_split(
         original_image = Image.open(image_path).convert("RGB")
         original_output = output_images / image_path.name
         shutil.copy2(image_path, original_output)
-        _save_annotations(annotations, output_labels / f"{image_path.stem}.txt")
+        _save_annotations(
+            [
+                YoloObbAnnotation(class_id=annotation.class_id, points=_clamp_points(annotation.points))
+                for annotation in annotations
+            ],
+            output_labels / f"{image_path.stem}.txt",
+        )
         written.append(original_output)
 
         for copy_index in range(1, target_per_image):
