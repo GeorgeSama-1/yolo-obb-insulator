@@ -22,10 +22,21 @@ Thumbs.db
 
 # Raw datasets and local experiments
 datasets/
+datasets_pool/
+incoming_batch/
+prelabel_batch/
 data/raw/labelme_obb/
 data/processed/*
 !data/processed/.gitkeep
 data/splits/*.json
+new_images/
+*_annotations.xml
+*_cvat/
+*_cvat.zip
+*_cvat_annotations/
+*_cvat_annotations.zip
+*_cvat_annotations_portable.zip
+*_from_source_annotations.xml
 
 # Training outputs
 runs/
