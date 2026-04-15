@@ -4,7 +4,7 @@ from src.stage0_obb.config import load_stage0_config
 
 
 def build_stage0_train_args(config: dict) -> dict:
-    return {
+    train_args = {
         "data": config["data"],
         "epochs": config.get("epochs", 100),
         "imgsz": config.get("imgsz", 1024),
@@ -13,6 +13,10 @@ def build_stage0_train_args(config: dict) -> dict:
         "name": config.get("name", "insulator"),
         "device": config.get("device", "cpu"),
     }
+    excluded_keys = {"model", *train_args.keys()}
+    extra_args = {key: value for key, value in config.items() if key not in excluded_keys}
+    train_args.update(extra_args)
+    return train_args
 
 
 def train_stage0(config_path: str | Path):
