@@ -1,577 +1,308 @@
-# 绝缘子 OBB 项目
+# 绝缘子 OBB 实验项目
 
-这是一个面向绝缘子检测、计数和后续缺陷识别实验的项目骨架，当前已经优先打通了 `Stage 0`：
+这个项目用于支撑 3 条实验线：
 
-- 将平铺的 `YOLO OBB TXT + 图片` 整理成标准训练目录结构
-- 对训练集做离线增强
-- 检查增强后标签是否合法
-- 可视化抽检增强后的 OBB 框
-- 训练 `YOLO11 OBB` 单类绝缘子检测模型
-- 训练后批量可视化预测结果
+- `Stage 0`：绝缘子 OBB 检测与计数
+- `Stage 1`：两阶段缺陷识别，先检测再做 patch 分类
+- `Stage 2`：一阶段 `normal / abnormal` OBB 检测
 
-后续还预留了两条扩展路线：
+当前推荐的推进顺序是：
 
-- `Stage 1`：先检测绝缘子，再裁片做 `normal / abnormal` 分类
-- `Stage 2`：直接训练 `normal / abnormal` 的 OBB 检测模型
+1. 先固定并复现 `Stage 0` 基线
+2. 再整理并训练 `Stage 2` 一阶段缺陷 OBB
+3. 最后补 `Stage 1` patch 分类实验
 
-## 1. 当前项目结构
+## 1. 目录规范
+
+从现在开始，推荐使用这套目录命名：
 
 ```text
-yolo-obb/
-├─ configs/
-├─ data/
-├─ datasets/
-├─ docs/
-├─ reports/
-├─ runs/
-├─ scripts/
-├─ src/
-└─ tests/
+incoming_batches/                         # 新进入项目、尚未预标注的图片
+prelabel_batches/stage0_insulator_obb/   # Stage 0 预标注批次
+cvat_exports/                            # CVAT 导入导出 XML、ZIP、修标结果
+data_sources/stage2_defect_obb/          # Stage 2 一阶段缺陷标注来源
+datasets_pool_stage0_insulator_obb/      # Stage 0 总训练池
+datasets_pool_stage2_defect_obb/         # Stage 2 总训练池
+data/processed/stage0_insulator_obb/     # Stage 0 标准训练集
+data/processed/stage0_insulator_obb_aug20/
+data/processed/stage1_patch_classifier/  # Stage 1 patch 分类数据
+data/processed/stage2_defect_obb/        # Stage 2 标准训练集
+data/processed/stage2_defect_obb_aug20/
 ```
 
-关键目录说明：
+已经完成的目录迁移：
 
-- `datasets/`
-  - 当前原始数据目录
-  - 当前主流程默认存放平铺的 `JPG + TXT`
-- `data/raw/`
-  - 规范化后的原始数据副本
-- `data/processed/`
-  - 转换后和增强后的 `YOLO OBB` 数据集
-- `configs/stage0_obb/train_insulator.yaml`
-  - Stage 0 训练配置
-- `scripts/data/`
-  - 数据转换、增强、校验脚本
-- `scripts/train/`
-  - 训练入口脚本
-- `scripts/infer/`
-  - 推理与可视化脚本
-- `reports/figures/`
-  - 可视化检查图输出目录
+- `labels_1` -> `data_sources/stage2_defect_obb/batch_001`
+- `labels_2` -> `data_sources/stage2_defect_obb/batch_002`
+- `images_merged` -> `data_sources/stage2_defect_obb/merged_train_source`
+- `new_images` -> `prelabel_batches/stage0_insulator_obb/batch_001`
+- `new_images_add1` -> `prelabel_batches/stage0_insulator_obb/batch_002`
+
+更详细的规则见：
+
+- [naming-and-layout.md](/mnt/f/yolo-obb/docs/project/naming-and-layout.md)
+- [experiment-plan.md](/mnt/f/yolo-obb/docs/project/experiment-plan.md)
 
 ## 2. 环境依赖
 
 建议 Python 3.10 及以上。
 
-安装依赖：
-
 ```bash
 pip install -r requirements.txt
 ```
 
-当前依赖包括：
+## 3. Stage 0：绝缘子 OBB 基线
 
-- `ultralytics`
-- `opencv-python`
-- `Pillow`
-- `PyYAML`
-- `pytest`
+### 3.1 总训练池
 
-## 3. 数据格式说明
-
-### 3.1 原始数据
-
-当前推荐主流程的原始数据是平铺的 `YOLO OBB` 风格：
-
-- 图片文件：如 `23.JPG`
-- 标注文件：如 `23.txt`
-- 每一行是 `class_id + 8个归一化点坐标`
-
-例如：
+Stage 0 默认总训练池：
 
 ```text
-0 0.758541 0.278335 0.782787 0.266505 0.794211 0.308130 0.769966 0.319960
+datasets_pool_stage0_insulator_obb/
 ```
 
-兼容说明：
-
-- 如果你后面还有旧的 `LabelMe JSON` 数据，也可以继续用旧脚本转换
-- 但你当前这批新数据，应该直接走 `TXT OBB` 主流程
-
-### 3.2 训练数据
-
-训练使用 `YOLO OBB` 格式，标签示例：
+目录格式是平铺的：
 
 ```text
-0 0.229036 0.521354 0.247786 0.513368 0.263151 0.575868 0.245703 0.583507
-```
-
-含义是：
-
-- 第 1 列：类别 id
-- 后 8 列：4 个点的归一化坐标 `x1 y1 x2 y2 x3 y3 x4 y4`
-
-## 4. 推荐使用流程
-
-如果你要在服务器上训练，建议严格按下面流程执行。
-
-### 第一步：生成 train/val 划分
-
-```bash
-python scripts/data/make_split.py \
-  --source datasets \
-  --output data/splits/debug_split.json
-```
-
-输出：
-
-- `data/splits/debug_split.json`
-
-### 第二步：整理成标准 YOLO OBB 训练数据集
-
-你当前的 `datasets/` 已经是 `JPG + TXT`，但还是平铺结构，还不能直接拿来当标准训练目录。
-
-先执行：
-
-```bash
-python scripts/data/prepare_yolo_obb_dataset.py \
-  --source datasets \
-  --split-json data/splits/debug_split.json \
-  --output data/processed/yolo_obb_insulator
-```
-
-输出结果目录：
-
-- `data/processed/yolo_obb_insulator/images/train`
-- `data/processed/yolo_obb_insulator/images/val`
-- `data/processed/yolo_obb_insulator/labels/train`
-- `data/processed/yolo_obb_insulator/labels/val`
-- `data/processed/yolo_obb_insulator/dataset.yaml`
-
-### 第三步：对训练集做离线增强并顺手生成预览图
-
-比如每张训练图扩成 `20` 张：
-
-```bash
-python scripts/data/augment_yolo_obb.py \
-  --input data/processed/yolo_obb_insulator \
-  --output data/processed/yolo_obb_insulator_aug20 \
-  --target-per-image 20 \
-  --augment-splits train \
-  --seed 123 \
-  --preview \
-  --preview-limit 50
-```
-
-说明：
-
-- `--target-per-image 20`
-  - 表示每张原图最终保留 `20` 张
-  - 包括原图本身
-- `--augment-splits train`
-  - 只增强训练集
-  - 验证集不增强，原样复制
-- `--preview`
-  - 增强完成后顺手导出一批可视化预览图
-- `--preview-limit 50`
-  - 每个 split 最多导出 50 张预览图
-
-当前脚本会做：
-
-- 水平翻转
-- 垂直翻转
-- 90 / 180 / 270 度旋转
-- 亮度扰动
-- 对比度扰动
-- 颜色扰动
-
-预览图默认输出到：
-
-- `data/processed/yolo_obb_insulator_aug20/preview`
-
-### 第四步：检查增强后标签是否合法
-
-```bash
-python scripts/data/validate_yolo_obb_dataset.py \
-  --dataset data/processed/yolo_obb_insulator_aug20
-```
-
-这个脚本会检查：
-
-- 图片和标签是否一一对应
-- 每行是否为 `9` 列
-- 类别 id 是否合法
-- 坐标是否都在 `[0, 1]`
-
-如果正常，会输出：
-
-```bash
-YOLO OBB dataset validation passed
-```
-
-### 第五步：人工查看增强时自动生成的预览图
-
-你现在不一定需要再手动跑一次可视化脚本了，因为增强脚本已经支持直接输出预览图。
-
-默认去看这里：
-
-- `data/processed/yolo_obb_insulator_aug20/preview/train`
-
-如果你还是想手动额外导出，也可以继续用：
-
-```bash
-python scripts/infer/visualize_yolo_obb_dataset.py \
-  --dataset data/processed/yolo_obb_insulator_aug20 \
-  --split train \
-  --output reports/figures/aug_check \
-  --limit 50
-```
-
-建议重点检查：
-
-- 框是否跟着目标一起旋转/翻转
-- 框是否明显偏移
-- 点顺序是否异常
-- 是否有框跑出目标区域
-
-输出目录：
-
-- `reports/figures/aug_check`
-
-## 5. 开始训练 Stage 0
-
-训练前先修改配置文件：
-
-- [configs/stage0_obb/train_insulator.yaml](/mnt/f/yolo-obb/configs/stage0_obb/train_insulator.yaml)
-
-推荐把 `data` 改成增强后的数据集：
-
-```yaml
-model: yolo11n-obb.pt
-data: data/processed/yolo_obb_insulator_aug20/dataset.yaml
-epochs: 100
-imgsz: 1024
-batch: 4
-project: runs/stage0_obb
-name: insulator
-device: 0
-```
-
-然后开始训练：
-
-```bash
-python scripts/train/train_stage0_obb.py \
-  --config configs/stage0_obb/train_insulator.yaml
-```
-
-训练结果通常会输出到：
-
-```bash
-runs/stage0_obb/insulator/
-```
-
-常见重要文件：
-
-- `weights/best.pt`
-- `weights/last.pt`
-
-## 6. 训练后批量可视化预测结果
-
-训练完成后，可以把预测结果批量画出来：
-
-```bash
-python scripts/infer/visualize_stage0_predictions.py \
-  --weights runs/stage0_obb/insulator/weights/best.pt \
-  --source datasets \
-  --output reports/figures/predictions \
-  --dataset-yaml data/processed/yolo_obb_insulator_aug20/dataset.yaml \
-  --imgsz 1024 \
-  --conf 0.25
-```
-
-输出目录：
-
-- `reports/figures/predictions`
-
-这个步骤主要用来看：
-
-- 框是否贴合目标
-- 方向是否正确
-- 有没有明显漏检
-- 有没有明显误检
-
-## 7. 将新数据自动转换为 CVAT XML
-
-如果你后面新增了一批图片，并且已经有对应的 `YOLO OBB` 标签，希望导入 CVAT 继续修标，可以直接使用：
-
-- [scripts/data/convert_yolo_obb_to_cvat_xml.py](/mnt/f/yolo-obb/scripts/data/convert_yolo_obb_to_cvat_xml.py)
-
-这个脚本输出的是：
-
-- `CVAT for images 1.1` XML
-- 图形类型为原生旋转框 `<box rotation="...">`
-- 不是 polygon
-
-### 7.1 支持的输入目录
-
-脚本支持 3 种常见输入形式：
-
-- 平铺目录：`xxx.jpg + xxx.txt`
-- 中间目录：`images/train + labels/train`
-- 标准数据集：`dataset.yaml + images/train + labels/train`
-
-### 7.2 从平铺目录直接转换
-
-如果你的目录是这种形式：
-
-```text
-some_dir/
+datasets_pool_stage0_insulator_obb/
 ├─ a.jpg
 ├─ a.txt
 ├─ b.jpg
 └─ b.txt
 ```
 
-执行：
+### 3.2 数据准备
+
+生成切分：
 
 ```bash
-python3 scripts/data/convert_yolo_obb_to_cvat_xml.py \
-  --source /path/to/some_dir \
-  --output /path/to/annotations.xml \
-  --class-name insulator
+python scripts/data/make_split.py
 ```
 
-### 7.3 从 `images/train + labels/train` 目录转换
-
-如果你的目录是这种形式：
+默认会生成：
 
 ```text
-some_dir/
-├─ images/
-│  └─ train/
-└─ labels/
-   └─ train/
+data/splits/stage0_insulator_obb_split.json
 ```
 
-执行：
+整理成标准训练结构：
 
 ```bash
-python3 scripts/data/convert_yolo_obb_to_cvat_xml.py \
-  --source /path/to/some_dir \
-  --output /path/to/annotations.xml \
-  --class-name insulator \
-  --split train
+python scripts/data/prepare_yolo_obb_dataset.py \
+  --split-json data/splits/stage0_insulator_obb_split.json
 ```
 
-例如你当前这批新图就可以直接这样转：
-
-```bash
-python3 scripts/data/convert_yolo_obb_to_cvat_xml.py \
-  --source /mnt/f/yolo-obb/new_images \
-  --output /mnt/f/yolo-obb/new_images_annotations.xml \
-  --class-name insulator \
-  --split train
-```
-
-### 7.4 从标准 YOLO OBB 数据集转换
-
-如果你的目录已经有 `dataset.yaml`，可以直接：
-
-```bash
-python3 scripts/data/convert_yolo_obb_to_cvat_xml.py \
-  --dataset data/processed/yolo_obb_insulator_aug20 \
-  --output /path/to/annotations.xml \
-  --split train
-```
-
-### 7.5 导入 CVAT 的建议
-
-推荐做法：
-
-1. 先在 CVAT 里创建任务并上传图片
-2. 再选择 `Import annotations`
-3. 格式选择 `CVAT for images 1.1`
-4. 上传脚本生成的 `.xml`
-
-注意：
-
-- 当前 XML 导出的是原生旋转框，不是 polygon
-- `rotation` 已经归一化到 `0~360`
-- 更适合你现在这条“模型预标注后，再进 CVAT 修标”的流程
-
-### 7.6 推荐的数据扩充闭环
-
-如果你当前最核心的目标是持续扩充数据集，而不是严格管理 `v1 / v2 / v3`，推荐维护一个总训练池：
+默认输出：
 
 ```text
-datasets_pool/
-├─ xxx.jpg
-├─ xxx.txt
-├─ yyy.jpg
-└─ yyy.txt
+data/processed/stage0_insulator_obb/
 ```
 
-推荐工作流：
-
-1. 用当前模型对新图预标注
-2. 转成 CVAT XML 并导入 CVAT 修标
-3. 修标完成后，把这批新数据并入 `datasets_pool`
-4. 每次训练都直接基于 `datasets_pool` 重新切分、增强和训练
-
-### 7.7 将修好的新数据并入 `datasets_pool`
-
-脚本：
-
-- [scripts/data/merge_into_dataset_pool.py](/mnt/f/yolo-obb/scripts/data/merge_into_dataset_pool.py)
-
-如果修好的数据是平铺目录：
+增强：
 
 ```bash
-python3 scripts/data/merge_into_dataset_pool.py \
-  --source /path/to/corrected_batch \
-  --pool datasets_pool
+python scripts/data/augment_yolo_obb.py \
+  --input data/processed/stage0_insulator_obb \
+  --output data/processed/stage0_insulator_obb_aug20 \
+  --target-per-image 20 \
+  --augment-splits train \
+  --seed 123 \
+  --preview \
+  --preview-limit 50
 ```
 
-如果修好的数据是这种形式：
+校验：
+
+```bash
+python scripts/data/validate_yolo_obb_dataset.py \
+  --dataset data/processed/stage0_insulator_obb_aug20
+```
+
+### 3.3 训练
+
+配置文件：
+
+- [train_insulator.yaml](/mnt/f/yolo-obb/configs/stage0_obb/train_insulator.yaml)
+
+当前默认配置会读取：
 
 ```text
-corrected_batch/
+data/processed/stage0_insulator_obb_aug20/dataset.yaml
+```
+
+训练命令：
+
+```bash
+python scripts/train/train_stage0_obb.py \
+  --config configs/stage0_obb/train_insulator.yaml
+```
+
+如果你在服务器上指定 GPU，例如物理卡 `4`：
+
+```bash
+CUDA_VISIBLE_DEVICES=4 python scripts/train/train_stage0_obb.py \
+  --config configs/stage0_obb/train_insulator.yaml
+```
+
+## 4. Stage 0：新图预标注与 CVAT 修标
+
+预标注批次建议放在：
+
+```text
+prelabel_batches/stage0_insulator_obb/
+```
+
+例如：
+
+```text
+prelabel_batches/stage0_insulator_obb/batch_001/
 ├─ images/train/
 └─ labels/train/
 ```
 
-则执行：
+如果你要把这批预标注导入 CVAT：
 
 ```bash
-python3 scripts/data/merge_into_dataset_pool.py \
-  --source /path/to/corrected_batch \
-  --pool datasets_pool \
+python3 scripts/data/convert_yolo_obb_to_cvat_xml.py \
+  --source prelabel_batches/stage0_insulator_obb/batch_001 \
+  --output cvat_exports/batch_001_stage0_insulator_obb.xml \
+  --class-name insulator \
   --split train
 ```
 
-如果同名图片和标签已经存在，而你明确想覆盖旧结果，可以加：
+在 CVAT 中导入时选择：
 
-```bash
---overwrite
+- `CVAT for images 1.1`
+
+## 5. Stage 2：一阶段缺陷 OBB
+
+### 5.1 标注来源
+
+一阶段 `normal / abnormal` 的历史来源放在：
+
+```text
+data_sources/stage2_defect_obb/
+├─ batch_001/
+├─ batch_002/
+└─ merged_train_source/
 ```
 
-### 7.8 从 `datasets_pool` 重新训练
+`merged_train_source/` 是当前整理好的合并训练源。
 
-当你并入了一批新修好的数据后，下一轮训练建议统一从 `datasets_pool` 出发：
+### 5.2 建立 Stage 2 总训练池
+
+把一阶段数据并入总训练池：
+
+```bash
+python3 scripts/data/merge_into_dataset_pool.py \
+  --source data_sources/stage2_defect_obb/merged_train_source \
+  --pool datasets_pool_stage2_defect_obb \
+  --split train
+```
+
+### 5.3 数据准备
+
+生成切分：
 
 ```bash
 python scripts/data/make_split.py \
-  --source datasets_pool \
-  --output data/splits/pool_split.json
+  --source datasets_pool_stage2_defect_obb \
+  --output data/splits/stage2_defect_obb_split.json
+```
 
+整理成标准训练结构：
+
+```bash
 python scripts/data/prepare_yolo_obb_dataset.py \
-  --source datasets_pool \
-  --split-json data/splits/pool_split.json \
-  --output data/processed/yolo_obb_insulator_pool
+  --source datasets_pool_stage2_defect_obb \
+  --split-json data/splits/stage2_defect_obb_split.json \
+  --output data/processed/stage2_defect_obb \
+  --class-name normal \
+  --class-name abnormal
+```
 
+增强：
+
+```bash
 python scripts/data/augment_yolo_obb.py \
-  --input data/processed/yolo_obb_insulator_pool \
-  --output data/processed/yolo_obb_insulator_pool_aug20 \
+  --input data/processed/stage2_defect_obb \
+  --output data/processed/stage2_defect_obb_aug20 \
   --target-per-image 20 \
   --augment-splits train \
   --seed 123 \
   --preview \
   --preview-limit 50
+```
 
+校验：
+
+```bash
 python scripts/data/validate_yolo_obb_dataset.py \
-  --dataset data/processed/yolo_obb_insulator_pool_aug20
-
-python scripts/train/train_stage0_obb.py \
-  --config configs/stage0_obb/train_insulator.yaml
+  --dataset data/processed/stage2_defect_obb_aug20
 ```
 
-## 8. 计数评估脚本
+### 5.4 训练
 
-目前有一个简单的计数评估入口：
+配置文件：
+
+- [train_defect_obb.yaml](/mnt/f/yolo-obb/configs/stage2_one_stage/train_defect_obb.yaml)
+
+当前默认配置会读取：
+
+```text
+data/processed/stage2_defect_obb_aug20/dataset.yaml
+```
+
+训练命令：
 
 ```bash
-python scripts/eval/eval_stage0_obb.py \
-  --ground-truth 70 27 70 \
-  --predicted 69 28 70 \
-  --output reports/metrics/stage0_count_metrics.json
+python scripts/train/train_stage2_obb.py \
+  --config configs/stage2_one_stage/train_defect_obb.yaml
 ```
 
-输出指标包括：
-
-- `mae`
-- `exact_accuracy`
-
-## 9. 当前最推荐的训练前检查清单
-
-在服务器上开始训练前，建议至少确认这 3 件事都做了：
-
-1. `validate_yolo_obb_dataset.py` 已通过  
-2. `visualize_yolo_obb_dataset.py` 已人工抽检过一批增强图  
-3. `train_insulator.yaml` 中的 `data` 已指向增强后的数据集  
-
-## 10. 其他已预留能力
-
-### Stage 1：两阶段路线
-
-相关文件：
-
-- `src/stage1_two_stage/crops.py`
-- `configs/stage1_two_stage/classifier.yaml`
-- `scripts/data/generate_stage1_crops.py`
-- `scripts/train/train_stage1_classifier.py`
-
-目标：
-
-- 先检测绝缘子
-- 再裁剪 patch
-- 再训练 `normal / abnormal` 分类模型
-
-### Stage 2：一阶段路线
-
-相关文件：
-
-- `src/stage2_one_stage/dataset.py`
-- `src/stage2_one_stage/train.py`
-- `configs/stage2_one_stage/train_defect_obb.yaml`
-- `scripts/data/prepare_stage2_dataset.py`
-- `scripts/train/train_stage2_obb.py`
-
-目标：
-
-- 直接训练 `normal / abnormal` 的 OBB 模型
-
-## 11. 运行测试
-
-如果你修改了脚本或数据处理逻辑，可以运行：
+如果你在服务器上指定 GPU，例如物理卡 `4`：
 
 ```bash
-pytest -q
+CUDA_VISIBLE_DEVICES=4 python scripts/train/train_stage2_obb.py \
+  --config configs/stage2_one_stage/train_defect_obb.yaml
 ```
 
-## 12. 一套最常用命令
+## 6. Stage 1：两阶段 patch 分类
 
-如果你只想快速照着执行，最常用的一套命令如下：
+Stage 1 当前默认分类数据目录已经同步到：
+
+```text
+data/processed/stage1_patch_classifier
+```
+
+配置文件：
+
+- [classifier.yaml](/mnt/f/yolo-obb/configs/stage1_two_stage/classifier.yaml)
+
+这条线建议在 `Stage 0` 和 `Stage 2` 都稳定之后再正式展开。
+
+## 7. 运行测试
+
+如果你修改了路径、脚本或配置，建议至少运行：
 
 ```bash
-python scripts/data/make_split.py \
-  --source datasets \
-  --output data/splits/debug_split.json
-
-python scripts/data/prepare_yolo_obb_dataset.py \
-  --source datasets \
-  --split-json data/splits/debug_split.json \
-  --output data/processed/yolo_obb_insulator
-
-python scripts/data/augment_yolo_obb.py \
-  --input data/processed/yolo_obb_insulator \
-  --output data/processed/yolo_obb_insulator_aug20 \
-  --target-per-image 20 \
-  --augment-splits train \
-  --seed 123 \
-  --preview \
-  --preview-limit 50
-
-python scripts/data/validate_yolo_obb_dataset.py \
-  --dataset data/processed/yolo_obb_insulator_aug20
-
-python scripts/train/train_stage0_obb.py \
-  --config configs/stage0_obb/train_insulator.yaml
-
-python scripts/infer/visualize_stage0_predictions.py \
-  --weights runs/stage0_obb/insulator/weights/best.pt \
-  --source datasets \
-  --output reports/figures/predictions \
-  --dataset-yaml data/processed/yolo_obb_insulator_aug20/dataset.yaml \
-  --imgsz 1024 \
-  --conf 0.25
+pytest -q tests/common/test_default_paths.py tests/common/test_paths.py
 ```
+
+## 8. 你接下来最推荐的顺序
+
+你已经明确计划：
+
+1. 先做 `Stage 0`
+2. 再做 `Stage 2`
+
+推荐执行顺序就是：
+
+1. 固定服务器上的 `Stage 0` 最优参数
+2. 复现一次 `Stage 0` 基线实验
+3. 输出一份 `Stage 0` 阶段性结果
+4. 用 `merged_train_source` 建立 `Stage 2` 总训练池
+5. 训练 `Stage 2` 一阶段 `normal / abnormal` OBB
+6. 输出第二份阶段性结果
+
+这两轮结果出来后，再决定要不要补 `Stage 1` 两阶段 patch 分类实验。

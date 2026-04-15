@@ -6,6 +6,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.common.defaults import DEFAULT_STAGE0_POOL_NAME, DEFAULT_STAGE0_SPLIT_PATH
 from src.data_tools.ingest import find_labelme_pairs, find_yolo_obb_pairs
 from src.data_tools.splits import make_debug_split, write_split_manifest
 
@@ -21,8 +22,8 @@ def _detect_source_format(source: str | Path) -> str:
 
 def main() -> None:
     parser = ArgumentParser(description="Create a reproducible train/val split manifest.")
-    parser.add_argument("--source", default="datasets")
-    parser.add_argument("--output", default="data/splits/debug_split.json")
+    parser.add_argument("--source", default=DEFAULT_STAGE0_POOL_NAME)
+    parser.add_argument("--output", default=DEFAULT_STAGE0_SPLIT_PATH)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--val-ratio", type=float, default=0.25)
     args = parser.parse_args()

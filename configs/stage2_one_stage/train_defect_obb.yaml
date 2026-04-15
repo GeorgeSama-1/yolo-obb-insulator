@@ -1,8 +1,8 @@
 model: yolo11n-obb.pt
-data: data/processed/yolo_obb_defect_aug20/dataset.yaml
+data: data/processed/stage2_defect_obb_aug20/dataset.yaml
 epochs: 150
 imgsz: 1024
 batch: 8
 project: runs/stage2_one_stage
-name: defect_obb
+name: stage2_defect_obb
 device: 0

@@ -23,8 +23,13 @@ Thumbs.db
 # Raw datasets and local experiments
 datasets/
 datasets_pool/
+datasets_pool_*/
 incoming_batch/
+incoming_batches/
 prelabel_batch/
+prelabel_batches/
+cvat_exports/
+data_sources/
 data/raw/labelme_obb/
 data/processed/*
 !data/processed/.gitkeep
