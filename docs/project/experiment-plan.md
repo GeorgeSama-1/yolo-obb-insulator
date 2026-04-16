@@ -73,6 +73,8 @@
 - `datasets_pool_stage2_defect_obb/`
 - `data/processed/stage2_defect_obb/`
 - `data/processed/stage2_defect_obb_aug20/`
+- `data/processed/stage2_defect_obb_abn_boost/`
+- `data/processed/stage2_defect_obb_abn_light_aug/`
 - `runs/stage2_one_stage/exp03_stage2_defect_obb/`
 
 报告中需要记录：
@@ -82,13 +84,16 @@
 - 训练参数
 - 检测效果
 - abnormal 检测表现
+- abnormal/normal 比例
+- abnormal boost 与 abnormal 轻增强对照结果
 
 ## 2. 推荐执行顺序
 
 1. 先固定 `Stage 0` 服务器最优参数
 2. 重跑 `Stage 0` 基线，产出统一基线结果
 3. 基于当前目录规范整理一阶段数据并训练 `Stage 2`
-4. 最后补两阶段 patch 分类实验
+4. 基于 Stage 2 生成 abnormal boost 与 abnormal 轻增强对照实验
+5. 最后补两阶段 patch 分类实验
 
 ## 3. 数据目录职责
 

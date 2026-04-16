@@ -28,6 +28,8 @@ data/processed/stage0_insulator_obb_aug20/
 data/processed/stage1_patch_classifier/  # Stage 1 patch 分类数据
 data/processed/stage2_defect_obb/        # Stage 2 标准训练集
 data/processed/stage2_defect_obb_aug20/
+data/processed/stage2_defect_obb_abn_boost/
+data/processed/stage2_defect_obb_abn_light_aug/
 ```
 
 已经完成的目录迁移：
@@ -241,7 +243,46 @@ python scripts/data/validate_yolo_obb_dataset.py \
   --dataset data/processed/stage2_defect_obb_aug20
 ```
 
-### 5.4 训练
+### 5.4 Stage 2 类别比例与 abnormal 对照实验
+
+如果你要做 `normal / abnormal` 类别比例统计，以及两套 abnormal 对照实验，可以直接基于准备好的 Stage 2 数据集生成：
+
+- 类别统计：
+  - `reports/metrics/stage2_class_balance.json`
+  - `reports/tables/stage2_class_balance.md`
+- abnormal 采样加强版：
+  - `data/processed/stage2_defect_obb_abn_boost/`
+- abnormal 轻增强对照版：
+  - `data/processed/stage2_defect_obb_abn_light_aug/`
+
+命令：
+
+```bash
+python scripts/data/prepare_stage2_balance_experiments.py \
+  --input data/processed/stage2_defect_obb_aug20 \
+  --abnormal-target-per-image 3 \
+  --seed 123
+```
+
+默认会同时完成三件事：
+
+1. 统计 `normal / abnormal` 数量比例
+2. 生成只提高 abnormal 图片采样概率的数据集
+3. 生成只对 abnormal 做轻量旋转、缩放、亮度扰动的数据集
+
+如果你想分别训练这两套对照数据，只需要把一阶段配置里的 `data` 改到对应目录：
+
+```yaml
+data: data/processed/stage2_defect_obb_abn_boost/dataset.yaml
+```
+
+或者：
+
+```yaml
+data: data/processed/stage2_defect_obb_abn_light_aug/dataset.yaml
+```
+
+### 5.5 训练
 
 配置文件：
 
