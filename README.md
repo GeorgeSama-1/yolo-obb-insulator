@@ -316,11 +316,71 @@ Stage 1 当前默认分类数据目录已经同步到：
 data/processed/stage1_patch_classifier
 ```
 
+默认 patch 来源：
+
+```text
+data/processed/stage2_defect_obb_abn_boost
+```
+
+### 6.1 生成 patch 分类数据集
+
+从增强后的 Stage 2 OBB 数据集直接裁 patch，并生成 `YOLO-cls` 可训练目录：
+
+```bash
+python scripts/data/prepare_stage1_patch_classifier.py \
+  --input data/processed/stage2_defect_obb_abn_boost \
+  --output data/processed/stage1_patch_classifier \
+  --padding 8 \
+  --train-normal-to-abnormal-ratio 2
+```
+
+这一步会：
+
+- 从 Stage 2 的每个 `normal / abnormal` OBB 框裁出一个 patch
+- 生成：
+  - `train/normal`
+  - `train/abnormal`
+  - `val/normal`
+  - `val/abnormal`
+- 只在 `train` 上对 `abnormal` 做上采样
+- 保留全部 `normal`
+
+### 6.2 训练 YOLO-cls 分类器
+
 配置文件：
 
 - [classifier.yaml](/mnt/f/yolo-obb/configs/stage1_two_stage/classifier.yaml)
 
-这条线建议在 `Stage 0` 和 `Stage 2` 都稳定之后再正式展开。
+当前默认配置：
+
+- `model: yolo11m-cls.pt`
+- `imgsz: 384`
+
+训练命令：
+
+```bash
+python scripts/train/train_stage1_classifier.py \
+  --config configs/stage1_two_stage/classifier.yaml
+```
+
+如果你在服务器上指定 GPU，例如物理卡 `4`：
+
+```bash
+CUDA_VISIBLE_DEVICES=4 python scripts/train/train_stage1_classifier.py \
+  --config configs/stage1_two_stage/classifier.yaml
+```
+
+## 6.3 Stage 2 abnormal boost x6 便捷脚本
+
+如果你想单独生成 `x6` 的 Stage 2 abnormal boost 数据集，可以直接用：
+
+```bash
+python scripts/data/prepare_stage2_abn_boost_x6.py \
+  --input data/processed/stage2_defect_obb_aug20 \
+  --output data/processed/stage2_defect_obb_abn_boost_x6 \
+  --seed 123 \
+  --progress-every 10
+```
 
 ## 7. 运行测试
 

@@ -28,25 +28,44 @@ def main() -> None:
     parser.add_argument("--abnormal-boost-output", default=DEFAULT_STAGE2_ABNORMAL_BOOST_DIR)
     parser.add_argument("--abnormal-light-output", default=DEFAULT_STAGE2_ABNORMAL_LIGHT_AUG_DIR)
     parser.add_argument("--abnormal-target-per-image", type=int, default=3)
+    parser.add_argument(
+        "--progress-every",
+        type=int,
+        default=10,
+        help="Print Stage 2 dataset generation progress every N train images",
+    )
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
+    print(f"[stage2-balance] reading dataset: {args.input}")
+    print("[stage2-balance] writing class balance reports...")
     report = write_stage2_class_balance_reports(
         args.input,
         json_path=args.report_json,
         markdown_path=args.report_md,
     )
+    print(
+        "[stage2-balance] class balance ready: "
+        f"normal={report['instance_counts'].get('normal', 0)}, "
+        f"abnormal={report['instance_counts'].get('abnormal', 0)}"
+    )
+    print("[stage2-balance] generating abnormal boost dataset...")
     generate_stage2_abnormal_boost_dataset(
         args.input,
         args.abnormal_boost_output,
         abnormal_target_per_image=args.abnormal_target_per_image,
         seed=args.seed,
+        progress_callback=print,
+        progress_every=args.progress_every,
     )
+    print("[stage2-balance] generating abnormal light aug dataset...")
     generate_stage2_abnormal_light_aug_dataset(
         args.input,
         args.abnormal_light_output,
         abnormal_target_per_image=args.abnormal_target_per_image,
         seed=args.seed,
+        progress_callback=print,
+        progress_every=args.progress_every,
     )
 
     print(f"Stage2 class balance written to {args.report_json} and {args.report_md}")

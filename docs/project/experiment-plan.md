@@ -42,8 +42,8 @@
 
 输入数据：
 
-- 阶段 0 检测结果
-- 后续整理出的 patch 标注数据
+- 优先使用 `data/processed/stage2_defect_obb_abn_boost/`
+- 从已标注 `normal / abnormal` OBB 框直接裁 patch
 
 输出目录建议：
 
@@ -53,6 +53,7 @@
 报告中需要记录：
 
 - patch 生成方式
+- patch 平衡策略（只上采样 abnormal，保留全部 normal）
 - 分类数据量
 - 分类模型设置
 - 分类准确率
@@ -74,6 +75,7 @@
 - `data/processed/stage2_defect_obb/`
 - `data/processed/stage2_defect_obb_aug20/`
 - `data/processed/stage2_defect_obb_abn_boost/`
+- `data/processed/stage2_defect_obb_abn_boost_x6/`
 - `data/processed/stage2_defect_obb_abn_light_aug/`
 - `runs/stage2_one_stage/exp03_stage2_defect_obb/`
 

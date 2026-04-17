@@ -1,5 +1,8 @@
-model: resnet18
+model: yolo11m-cls.pt
 data: data/processed/stage1_patch_classifier
-epochs: 50
+epochs: 80
 batch: 16
-imgsz: 224
+imgsz: 384
+project: runs/stage1_two_stage
+name: stage1_patch_classifier
+device: 0

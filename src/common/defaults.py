@@ -4,6 +4,7 @@ DEFAULT_STAGE0_PROCESSED_DIR = "data/processed/stage0_insulator_obb"
 DEFAULT_STAGE0_AUGMENTED_DIR = "data/processed/stage0_insulator_obb_aug20"
 
 DEFAULT_STAGE1_PATCH_DATA_DIR = "data/processed/stage1_patch_classifier"
+DEFAULT_STAGE1_PATCH_SOURCE_DIR = "data/processed/stage2_defect_obb_abn_boost"
 
 DEFAULT_STAGE2_POOL_NAME = "datasets_pool_stage2_defect_obb"
 DEFAULT_STAGE2_SPLIT_PATH = "data/splits/stage2_defect_obb_split.json"
@@ -12,4 +13,5 @@ DEFAULT_STAGE2_AUGMENTED_DIR = "data/processed/stage2_defect_obb_aug20"
 DEFAULT_STAGE2_CLASS_BALANCE_JSON = "reports/metrics/stage2_class_balance.json"
 DEFAULT_STAGE2_CLASS_BALANCE_MD = "reports/tables/stage2_class_balance.md"
 DEFAULT_STAGE2_ABNORMAL_BOOST_DIR = "data/processed/stage2_defect_obb_abn_boost"
+DEFAULT_STAGE2_ABNORMAL_BOOST_X6_DIR = "data/processed/stage2_defect_obb_abn_boost_x6"
 DEFAULT_STAGE2_ABNORMAL_LIGHT_AUG_DIR = "data/processed/stage2_defect_obb_abn_light_aug"

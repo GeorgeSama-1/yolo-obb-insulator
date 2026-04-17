@@ -110,3 +110,31 @@ def test_write_stage2_class_balance_reports_creates_json_and_markdown(tmp_path):
 
     assert json_report["instance_counts"] == {"normal": 1, "abnormal": 2}
     assert "| abnormal | 2 | 2 |" in markdown_report
+
+
+def test_stage2_generation_reports_progress_messages(tmp_path):
+    dataset_root = _make_stage2_dataset(tmp_path / "dataset")
+    boost_output = tmp_path / "boosted"
+    light_output = tmp_path / "light"
+    messages: list[str] = []
+
+    generate_stage2_abnormal_boost_dataset(
+        dataset_root,
+        boost_output,
+        abnormal_target_per_image=3,
+        seed=7,
+        progress_callback=messages.append,
+        progress_every=1,
+    )
+    generate_stage2_abnormal_light_aug_dataset(
+        dataset_root,
+        light_output,
+        abnormal_target_per_image=3,
+        seed=11,
+        progress_callback=messages.append,
+        progress_every=1,
+    )
+
+    assert any("abnormal boost" in message for message in messages)
+    assert any("abnormal light aug" in message for message in messages)
+    assert any("train 1/2" in message for message in messages)

@@ -17,6 +17,19 @@ from src.data_tools.augment_yolo_obb import (
 )
 
 
+def _emit_progress(
+    callback,
+    stage_name: str,
+    split: str,
+    index: int,
+    total: int,
+    image_name: str,
+) -> None:
+    if callback is None:
+        return
+    callback(f"[{stage_name}] {split} {index}/{total}: {image_name}")
+
+
 def _load_dataset_yaml(dataset_root: str | Path) -> dict:
     dataset_root = Path(dataset_root)
     return yaml.safe_load((dataset_root / "dataset.yaml").read_text(encoding="utf-8")) or {}
@@ -203,10 +216,14 @@ def generate_stage2_abnormal_boost_dataset(
     output_root: str | Path,
     abnormal_target_per_image: int = 3,
     seed: int = 42,
+    progress_callback=None,
+    progress_every: int = 10,
 ) -> None:
     del seed
     if abnormal_target_per_image < 1:
         raise ValueError("abnormal_target_per_image must be at least 1")
+    if progress_every < 1:
+        raise ValueError("progress_every must be at least 1")
 
     dataset_root = Path(dataset_root)
     output_root = Path(output_root)
@@ -227,12 +244,17 @@ def generate_stage2_abnormal_boost_dataset(
         output_images.mkdir(parents=True, exist_ok=True)
         output_labels.mkdir(parents=True, exist_ok=True)
 
-        for image_path in _images_for_split(dataset_root, split):
+        train_images = _images_for_split(dataset_root, split)
+        total_images = len(train_images)
+        for index, image_path in enumerate(train_images, start=1):
             label_path = dataset_root / "labels" / split / f"{image_path.stem}.txt"
             annotations = _load_annotations(label_path)
 
             shutil.copy2(image_path, output_images / image_path.name)
             _save_annotations(annotations, output_labels / f"{image_path.stem}.txt")
+
+            if index == 1 or index % progress_every == 0 or index == total_images:
+                _emit_progress(progress_callback, "abnormal boost", split, index, total_images, image_path.name)
 
             if not _image_contains_class(annotations, abnormal_class_id):
                 continue
@@ -249,9 +271,13 @@ def generate_stage2_abnormal_light_aug_dataset(
     output_root: str | Path,
     abnormal_target_per_image: int = 3,
     seed: int = 42,
+    progress_callback=None,
+    progress_every: int = 10,
 ) -> None:
     if abnormal_target_per_image < 1:
         raise ValueError("abnormal_target_per_image must be at least 1")
+    if progress_every < 1:
+        raise ValueError("progress_every must be at least 1")
 
     dataset_root = Path(dataset_root)
     output_root = Path(output_root)
@@ -273,13 +299,18 @@ def generate_stage2_abnormal_light_aug_dataset(
         output_images.mkdir(parents=True, exist_ok=True)
         output_labels.mkdir(parents=True, exist_ok=True)
 
-        for image_path in _images_for_split(dataset_root, split):
+        train_images = _images_for_split(dataset_root, split)
+        total_images = len(train_images)
+        for index, image_path in enumerate(train_images, start=1):
             label_path = dataset_root / "labels" / split / f"{image_path.stem}.txt"
             annotations = _load_annotations(label_path)
 
             original_image = Image.open(image_path).convert("RGB")
             original_image.save(output_images / image_path.name)
             _save_annotations(annotations, output_labels / f"{image_path.stem}.txt")
+
+            if index == 1 or index % progress_every == 0 or index == total_images:
+                _emit_progress(progress_callback, "abnormal light aug", split, index, total_images, image_path.name)
 
             if not _image_contains_class(annotations, abnormal_class_id):
                 continue
